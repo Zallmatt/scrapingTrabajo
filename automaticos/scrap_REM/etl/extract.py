@@ -32,10 +32,26 @@ class ExtractREM:
         try:
             logger.info("[EXTRACT] Navegando a %s", URL)
             driver.get(URL)
-            wait = WebDriverWait(driver, 10)
+            
+            # 1. Aumentamos el timeout a 30 segundos
+            wait = WebDriverWait(driver, 30)
 
-            link_ultimo = wait.until(EC.presence_of_element_located((By.XPATH, XPATH_PRECIOS_MINORISTAS)))
-            url_ultimo = link_ultimo.get_attribute('href')
+            try:
+                # Intentamos con tu XPath original
+                link_ultimo = wait.until(EC.presence_of_element_located((By.XPATH, XPATH_PRECIOS_MINORISTAS)))
+                url_ultimo = link_ultimo.get_attribute('href')
+            except Exception:
+                logger.warning("[EXTRACT] El XPath absoluto falló. Intentando XPath de respaldo (primer Excel disponible)...")
+                # 2. Fallback robusto: Busca cualquier etiqueta <a> cuyo enlace contenga '.xls'
+                link_ultimo = wait.until(EC.presence_of_element_located((By.XPATH, "(//a[contains(@href, '.xls')])[1]")))
+                url_ultimo = link_ultimo.get_attribute('href')
+
+        except Exception as e:
+            # 3. Si todo falla, tomamos un screenshot para ver qué estaba bloqueando al bot
+            screenshot_path = os.path.join(FILES_DIR, 'error_timeout.png')
+            driver.save_screenshot(screenshot_path)
+            logger.error("[EXTRACT] Error de Timeout. Revisa la captura guardada en: %s", screenshot_path)
+            raise e
 
         finally:
             driver.quit()

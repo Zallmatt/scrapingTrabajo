@@ -51,53 +51,91 @@ class LoadEMAE:
 
     def _cargar_valores(self, df: pd.DataFrame) -> bool:
         """Carga solo fechas nuevas en la tabla emae."""
-        # En Postgres las columnas suelen estar en minúsculas
-
         tabla = "emae"
         schema = self._get_schema()
+        full_table_name = f"{schema}.{tabla}" if schema else tabla
 
-        # Leemos datos existentes para evitar duplicados por fecha
+        logger.info("--- Iniciando carga para: VALORES (Tabla: %s) ---", tabla)
+
+        if df is None or df.empty:
+            logger.info("[LOAD] [VALORES] DataFrame vacío. Omitiendo carga.")
+            return False
+
+        df['fecha'] = pd.to_datetime(df['fecha'])
+        fecha_max_extract = df['fecha'].max()
+
+        # Leemos datos existentes para logging y para evitar duplicados
         try:
-            # pd.read_sql maneja internamente el esquema si pasamos el engine
-            query = f"SELECT fecha FROM {tabla}" if not schema else f"SELECT fecha FROM {schema}.{tabla}"
-            df_bdd = pd.read_sql(query, con=self.engine)
-            fechas_existentes = set(pd.to_datetime(df_bdd['fecha']).dt.strftime('%Y-%m-%d'))
+            with self.engine.connect() as conn:
+                fecha_max_db = conn.execute(text(f"SELECT MAX(fecha) FROM {full_table_name}")).scalar()
+            
+            query_fechas = f"SELECT DISTINCT fecha FROM {full_table_name}"
+            df_bdd = pd.read_sql(query_fechas, con=self.engine)
+            fechas_existentes = set(pd.to_datetime(df_bdd['fecha']).dt.date)
         except Exception:
+            fecha_max_db = None
             fechas_existentes = set()
         
-        df_nuevos = df[~df['fecha'].dt.strftime('%Y-%m-%d').isin(fechas_existentes)]
+        fecha_db_str = fecha_max_db.strftime('%Y-%m-%d') if hasattr(fecha_max_db, 'strftime') else 'Ninguna (Tabla vacía)'
+        fecha_ext_str = fecha_max_extract.strftime('%Y-%m-%d') if hasattr(fecha_max_extract, 'strftime') else 'Ninguna (DF vacío)'
+
+        logger.info(f"[LOAD] [VALORES] Comparación de fechas -> Base: {fecha_db_str} | Extraído: {fecha_ext_str}")
+        
+        df['fecha_dt'] = df['fecha'].dt.date
+        df_nuevos = df[~df['fecha_dt'].isin(fechas_existentes)].copy()
+        df_nuevos = df_nuevos.drop(columns=['fecha_dt'])
         
         if not df_nuevos.empty:
+            logger.info(f"[LOAD] [VALORES] ¡Datos nuevos detectados! Se cargarán {len(df_nuevos)} registros (para {len(df_nuevos['fecha'].unique())} meses).")
             df_nuevos.to_sql(name=tabla, con=self.engine, schema=schema, if_exists='append', index=False, method='multi')
-            logger.info("[LOAD] EMAE valores: %d registros cargados.", len(df_nuevos))
+            logger.info("[OK] [VALORES] Carga a la base completada.")
             return True
+            
+        logger.info("[LOAD] [VALORES] No hay datos nuevos. La base está al día. No se sube a la base.")
         return False
 
     def _cargar_variaciones(self, df: pd.DataFrame) -> bool:
         tabla = "emae_variaciones"
         schema = self._get_schema()
-        
         full_table_name = f"{schema}.{tabla}" if schema else tabla
+
+        logger.info("--- Iniciando carga para: VARIACIONES (Tabla: %s) ---", tabla)
         
+        if df is None or df.empty:
+            logger.info("[LOAD] [VARIACIONES] DataFrame vacío. Omitiendo carga.")
+            return False
+
+        df['fecha'] = pd.to_datetime(df['fecha'])
+        fecha_max_extract = df['fecha'].max()
+
         try:
-            # 1. Leemos qué fechas ya tenemos para no duplicar por accidente
-            query = f"SELECT fecha FROM {full_table_name}"
-            df_bdd = pd.read_sql(query, con=self.engine)
+            with self.engine.connect() as conn:
+                fecha_max_db = conn.execute(text(f"SELECT MAX(fecha) FROM {full_table_name}")).scalar()
+
+            query_fechas = f"SELECT DISTINCT fecha FROM {full_table_name}"
+            df_bdd = pd.read_sql(query_fechas, con=self.engine)
             fechas_existentes = set(pd.to_datetime(df_bdd['fecha']).dt.date)
         except Exception:
+            fecha_max_db = None
             fechas_existentes = set()
 
-            # 2. Solo filtramos lo que REALMENTE no está en la base de datos
+        fecha_db_str = fecha_max_db.strftime('%Y-%m-%d') if hasattr(fecha_max_db, 'strftime') else 'Ninguna (Tabla vacía)'
+        fecha_ext_str = fecha_max_extract.strftime('%Y-%m-%d') if hasattr(fecha_max_extract, 'strftime') else 'Ninguna (DF vacío)'
+
+        logger.info(f"[LOAD] [VARIACIONES] Comparación de fechas -> Base: {fecha_db_str} | Extraído: {fecha_ext_str}")
+
+        # Filtramos lo que REALMENTE no está en la base de datos
         df['fecha_dt'] = pd.to_datetime(df['fecha']).dt.date
         df_nuevos = df[~df['fecha_dt'].isin(fechas_existentes)].copy()
         df_nuevos = df_nuevos.drop(columns=['fecha_dt']) # Limpiamos la columna auxiliar
 
         if not df_nuevos.empty:
+            logger.info(f"[LOAD] [VARIACIONES] ¡Datos nuevos detectados! Se cargarán {len(df_nuevos)} registros.")
             df_nuevos.to_sql(name=tabla, con=self.engine, schema=schema, if_exists='append', index=False, method='multi')
-            logger.info(f"[LOAD] EMAE variaciones: {len(df_nuevos)} registros nuevos cargados.")
+            logger.info("[OK] [VARIACIONES] Carga a la base completada.")
             return True
         
-        logger.info("[LOAD] EMAE variaciones: No hay fechas nuevas para cargar.")
+        logger.info("[LOAD] [VARIACIONES] No hay datos nuevos. La base está al día. No se sube a la base.")
         return False
 
     def close(self):

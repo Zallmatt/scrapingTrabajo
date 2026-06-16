@@ -33,12 +33,13 @@ class ExtractorCBT:
     def descargar_archivo(self) -> tuple:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         os.makedirs(FILES_DIR, exist_ok=True)
+        logger.info("[EXTRACT CBT] Iniciando descarga de archivo de Canasta Básica desde INDEC.")
         
         driver = self._crear_driver()
         href = None
         link_text = ""
         try:
-            logger.info("[EXTRACT-CBT] Navegando a %s", URL)
+            logger.info("[EXTRACT CBT] Navegando a la URL de INDEC: %s", URL)
             driver.get(URL)
             
             # Espera larga de 30 segundos por si el sitio está lento
@@ -48,28 +49,29 @@ class ExtractorCBT:
             link_element = wait.until(EC.presence_of_element_located((By.XPATH, XPATH_LINK)))
             href = link_element.get_attribute('href')
             link_text = link_element.get_attribute('textContent') or link_element.text
-            logger.info("[EXTRACT-CBT] URL del archivo detectada: %s", href)
-            logger.info("[EXTRACT-CBT] Texto del enlace detectado: %s", link_text)
+            logger.info("[EXTRACT CBT] URL del archivo XLS encontrada: %s", href)
+            logger.info("[EXTRACT CBT] Texto del enlace para parsear fecha: '%s'", link_text)
             
         except Exception as e:
-            logger.error("[EXTRACT-CBT] Error buscando el link: %s", e)
+            logger.error("[EXTRACT CBT] Error al buscar el enlace de descarga en la página: %s", e)
             raise e
         finally:
             driver.quit()
 
         # Parsear fecha de publicación del INDEC
         fecha_publicacion = self._parse_indec_latest_date(link_text)
-        logger.info("[EXTRACT-CBT] Fecha de publicación parsed: %s", fecha_publicacion)
+        logger.info("[EXTRACT CBT] Fecha de publicación INDEC extraída: %s", fecha_publicacion)
 
         # Descarga mediante requests
         ruta = os.path.join(FILES_DIR, NOMBRE_ARCHIVO)
+        logger.info("[EXTRACT CBT] Descargando archivo XLS...")
         response = requests.get(href, verify=False, timeout=60)
         response.raise_for_status()
         
         with open(ruta, 'wb') as f:
             f.write(response.content)
             
-        logger.info("[EXTRACT-CBT] Archivo guardado en: %s", ruta)
+        logger.info("[EXTRACT CBT] Archivo XLS guardado exitosamente en: %s", ruta)
         return ruta, fecha_publicacion
 
     @staticmethod

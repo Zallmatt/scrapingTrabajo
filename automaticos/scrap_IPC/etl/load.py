@@ -55,11 +55,33 @@ class LoadIPC:
         ]
         df_load = df[columnas_db].copy()
         
+        # Asegurar formato fecha para obtener correctos los máximos y mínimos
+        df_load['fecha'] = pd.to_datetime(df_load['fecha']).dt.date
+
         tabla = f"{self._get_schema_prefix()}ipc"
         
         try:
             fecha_min = df_load['fecha'].min()
             fecha_max = df_load['fecha'].max()
+            
+            # Obtener info de la BDD para logging
+            try:
+                with self.engine.connect() as conn:
+                    fecha_max_db = conn.execute(text(f"SELECT MAX(fecha) FROM {tabla}")).scalar()
+            except Exception:
+                fecha_max_db = None
+
+            # Construcción de logs descriptivos
+            fecha_db_str = fecha_max_db.strftime('%Y-%m-%d') if hasattr(fecha_max_db, 'strftime') else 'Ninguna (Tabla vacía)'
+            fecha_ext_str = fecha_max.strftime('%Y-%m-%d') if hasattr(fecha_max, 'strftime') else 'Ninguna (DF vacío)'
+            
+            logger.info(f"[LOAD] Comparación de fechas -> Base: {fecha_db_str} | Extraído: {fecha_ext_str}")
+
+            if df_load.empty:
+                logger.info("[LOAD] No hay datos en el DataFrame para procesar.")
+                return False
+
+            logger.info(f"[LOAD] Refrescando/insertando datos desde {fecha_min} hasta {fecha_max}. Se subirán {len(df_load)} registros.")
             
             # Borramos para evitar duplicados en el rango procesado
             sql_delete = text(f"DELETE FROM {tabla} WHERE fecha BETWEEN :fmin AND :fmax")
@@ -71,7 +93,7 @@ class LoadIPC:
                 df_load.to_sql(name='ipc', con=conn, schema="public" if self.version == "2" else None,
                              if_exists='append', index=False, method='multi')
             
-            logger.info(f"[LOAD] v{self.version} OK: {len(df_load)} filas en tabla 'ipc'.")
+            logger.info(f"[LOAD] Carga a la base completada. Se subieron {len(df_load)} registros a la tabla 'ipc'.")
             return True
         except Exception as e:
             logger.error(f"[LOAD ERROR] v{self.version}: {e}")

@@ -176,11 +176,11 @@ class TransformIPC:
             
             # Paso 2: mapeo
             nom_col = df_region.columns[0]
-            df_region[nom_col] = df_region[nom_col].apply(self._formatear_key)
-            df_region.iloc[:, 0] = df_region[nom_col].map(self.diccionario)
+            # Mapear claves a IDs y guardar en una serie temporal para evitar el TypeError
+            id_lists = df_region[nom_col].apply(self._formatear_key).map(self.diccionario)
             
             df_region[['id_categoria', 'id_division', 'id_subdivision']] = pd.DataFrame(
-                df_region[nom_col].tolist(), index=df_region.index
+                id_lists.tolist(), index=df_region.index
             )
             df_region = df_region.drop(nom_col, axis=1)
             

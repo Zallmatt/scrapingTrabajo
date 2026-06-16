@@ -80,10 +80,10 @@ class TransformerCBTCBA:
 
     def extraer_datos_nea(self, fecha_limite) -> pd.DataFrame:
         """Extrae datos del NEA desde la planilla de Google Sheets."""
-        logger.info("[TRANSFORM-NEA] Conectando a Google Sheets para extraer datos NEA...")
+        logger.info("[TRANSFORM CBT] Iniciando extracción de datos NEA desde Google Sheets.")
         key_env = os.getenv('GOOGLE_SHEETS_API_KEY')
         if not key_env:
-            logger.error("[TRANSFORM-NEA] GOOGLE_SHEETS_API_KEY no encontrada en variables de entorno.")
+            logger.error("[TRANSFORM CBT] Variable de entorno GOOGLE_SHEETS_API_KEY no encontrada.")
             raise ValueError("GOOGLE_SHEETS_API_KEY no encontrada en variables de entorno.")
 
         try:
@@ -97,7 +97,7 @@ class TransformerCBTCBA:
             values = result.get('values', [])
             
             if not values:
-                logger.warning("[TRANSFORM-NEA] No se encontraron datos en la planilla de Google Sheets.")
+                logger.warning("[TRANSFORM CBT] No se encontraron datos en la planilla de Google Sheets '%s'.", self.sheet_name)
                 return pd.DataFrame(columns=['fecha', 'cba_nea', 'cbt_nea'])
                 
             header = values[0]
@@ -125,18 +125,19 @@ class TransformerCBTCBA:
                 df_nea = df_nea[df_nea['fecha'] <= fecha_limite]
                 
             df_nea = df_nea.dropna(subset=['cba_nea', 'cbt_nea'], how='all').reset_index(drop=True)
-            logger.info("[TRANSFORM-NEA] ✓ Datos de NEA extraídos con éxito: %d filas.", len(df_nea))
+            logger.info("[TRANSFORM CBT] Datos de NEA extraídos y filtrados con éxito: %d filas.", len(df_nea))
             return df_nea
 
         except Exception as e:
-            logger.error("[TRANSFORM-NEA] Error leyendo Google Sheet: %s", e)
+            logger.error("[TRANSFORM CBT] Error al leer datos de Google Sheet (NEA): %s", e)
             raise e
 
     def transform_datalake(self, fecha_indec=None) -> pd.DataFrame:
         """Coordina la transformación completa uniendo GBA de CBT.xls y NEA de Google Sheets."""
-        logger.info("[TRANSFORM] Iniciando transformación de datos...")
+        logger.info("[TRANSFORM CBT] Iniciando transformación de datos GBA (XLS) y NEA (Sheets).")
 
         # 1. Procesar Hoja 1 (Adultos - GBA)
+        logger.info("[TRANSFORM CBT] Procesando datos de GBA desde el archivo: %s", self.file_cbt)
         df_adultos = pd.read_excel(self.file_cbt, sheet_name=0, usecols=[0, 1, 3], skiprows=6, skipfooter=1)
         df_adultos.columns = ['fecha', 'cba_adulto', 'cbt_adulto']
         
@@ -165,10 +166,10 @@ class TransformerCBTCBA:
         # 5. Obtener fecha de corte
         if fecha_indec is None:
             fecha_indec = df_base['fecha'].max()
-            logger.info("[TRANSFORM] fecha_indec no provista. Usando fecha máxima de CBT.xls: %s", fecha_indec)
+            logger.info("[TRANSFORM CBT] Fecha de corte no provista. Usando fecha máxima de CBT.xls: %s", fecha_indec)
         else:
             fecha_indec = pd.to_datetime(fecha_indec)
-            logger.info("[TRANSFORM] Usando fecha_indec de INDEC: %s", fecha_indec)
+            logger.info("[TRANSFORM CBT] Usando fecha de corte de INDEC: %s", fecha_indec)
 
         # Truncar df_base si es necesario para no pasarse de la fecha publicada de INDEC
         df_base = df_base[df_base['fecha'] <= fecha_indec].reset_index(drop=True)
@@ -179,5 +180,5 @@ class TransformerCBTCBA:
         # 7. Unir GBA y NEA por la columna fecha (evita bugs de desalineación)
         df_final = pd.merge(df_base, df_nea, on='fecha', how='left')
 
-        logger.info("[TRANSFORM] Transformación completada. Total registros: %d", len(df_final))
+        logger.info("[TRANSFORM CBT] Transformación completada. DataFrame final con %d registros.", len(df_final))
         return df_final

@@ -36,6 +36,27 @@ class LoadDNRPA:
             # Si estamos en Postgres, usamos el nombre calificado schema.table
             full_table_name = f"{schema}.{table_name}" if schema else table_name
 
+            logger.info("--- Iniciando carga para: DATOS DNRPA (Tabla: %s) ---", table_name)
+
+            if df is None or df.empty:
+                logger.info("[LOAD] DataFrame vacío. Omitiendo carga.")
+                return
+
+            # Obtener info de la BDD para logging (fecha máxima general)
+            try:
+                with self.engine.connect() as conn:
+                    fecha_max_db = conn.execute(text(f"SELECT MAX(fecha) FROM {full_table_name}")).scalar()
+            except Exception:
+                fecha_max_db = None
+
+            df['fecha'] = pd.to_datetime(df['fecha'])
+            fecha_max_extract = df['fecha'].max()
+
+            fecha_db_str = fecha_max_db.strftime('%Y-%m-%d') if hasattr(fecha_max_db, 'strftime') else 'Ninguna (Tabla vacía)'
+            fecha_ext_str = fecha_max_extract.strftime('%Y-%m-%d') if hasattr(fecha_max_extract, 'strftime') else 'Ninguna (DF vacío)'
+            
+            logger.info(f"[LOAD] Comparación de fechas -> Base: {fecha_db_str} | Extraído: {fecha_ext_str}")
+
             # 2. Verificar si hay cambios en el último año
             ultimo_anio = int(df['fecha'].dt.year.max())
             df_anio = df[df['fecha'].dt.year == ultimo_anio]
@@ -46,19 +67,28 @@ class LoadDNRPA:
 
             with self.engine.begin() as conn:
                 # 1. Verificar registros existentes
-                count_bd = conn.execute(query_count, {"anio": ultimo_anio}).scalar()
+                try:
+                    count_bd = conn.execute(query_count, {"anio": ultimo_anio}).scalar()
+                except Exception:
+                    count_bd = 0 # En caso de que la tabla aún no exista
+
+                logger.info(f"[LOAD] Comparación para el año {ultimo_anio} -> Base: {count_bd} registros | Extraído: {len(df_anio)} registros")
 
                 if count_bd == len(df_anio):
-                    logger.info(f"[LOAD] DNRPA: Sin datos nuevos para {ultimo_anio}.")
+                    logger.info(f"[LOAD] No hay datos nuevos para {ultimo_anio}. La base está al día. No se sube a la base.")
                     return
 
                 # 2. Recargar año actual
-                logger.info(f"[LOAD] Recargando año {ultimo_anio}...")
+                logger.info(f"[LOAD] ¡Datos nuevos detectados! Refrescando/insertando datos para el año {ultimo_anio}. Se subirán {len(df_anio)} registros.")
                 conn.execute(query_delete, {"anio": ultimo_anio})
                 df_anio.to_sql(table_name, con=conn, schema=schema, if_exists='append', index=False)
-                
+            
+            logger.info("[OK] Carga a la base completada.")
+
             # 3. Actualizar Sheets
+            logger.info("[LOAD] Iniciando actualización de Google Sheets...")
             self._update_sheets(df_anio)
+            logger.info("[OK] Carga y actualización de Sheets completada.")
 
         except Exception as e:
             logger.error(f"Error en Load DNRPA: {e}")

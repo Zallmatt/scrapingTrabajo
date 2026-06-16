@@ -29,7 +29,7 @@ class connection_db:
                 url = f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{puerto}/{self.database}"
             
             self.engine = create_engine(url, echo=False)
-            logger.info(f"[OK] Motor conectado a '{self.database}' (v{self.version})")
+            logger.info(f"[LOAD CBT] Conexión establecida a la base de datos '{self.database}' (v{self.version}).")
 
     def _get_schema(self):
         return "public" if self.version == "2" else None
@@ -37,6 +37,7 @@ class connection_db:
     #Objetivo: Almacenar los datos de CBA y CBT sin procesar en el datalake. Datos sin procesar
     def load_datalake(self,df: pd.DataFrame) -> bool:
         """Carga incremental híbrida para el Datalake."""
+        logger.info("[LOAD CBT] Iniciando proceso de carga a la base de datos.")
         self._conectar()
         schema = self._get_schema()
         full_table = f"{schema}.{self.tabla}" if schema else self.tabla
@@ -54,7 +55,7 @@ class connection_db:
                 len_bdd = res.scalar()
             except Exception:
                 len_bdd = 0
-                logger.info(f"Tabla '{self.tabla}' no existe, se creará.")
+                logger.info(f"[LOAD CBT] La tabla '{self.tabla}' no existe, se creará una nueva.")
 
         # 3. Carga si hay novedades (más filas o diferencias en el último registro)
         novedades = False
@@ -76,7 +77,7 @@ class connection_db:
                         
                         if df_fecha != db_fecha:
                             novedades = True
-                            logger.info("[LOAD] Difiere la fecha del último registro. Actualizando...")
+                            logger.info("[LOAD CBT] Novedad detectada: La fecha del último registro difiere. Se actualizará la tabla.")
                     
                     # 2. Comparamos la suma total de valores para detectar correcciones históricas
                     res_sum = conn.execute(text(f"SELECT SUM(cba_nea), SUM(cbt_nea) FROM {full_table}")).fetchone()
@@ -92,15 +93,16 @@ class connection_db:
                         
                         if abs(val_df_sum_cba - val_db_sum_cba) > 1.0 or abs(val_df_sum_cbt - val_db_sum_cbt) > 1.0:
                             novedades = True
-                            logger.info("[LOAD] Se detectaron correcciones en los datos históricos del NEA. Actualizando base de datos...")
+                            logger.info("[LOAD CBT] Novedad detectada: Se encontraron correcciones en datos históricos del NEA. Se actualizará la tabla.")
                             
                 except Exception as e:
-                    logger.warning(f"Error comparando registros históricos: {e}")
+                    logger.warning(f"[LOAD CBT] Error al comparar registros históricos: {e}")
 
         if novedades:
             # Ordenamos por fecha antes de insertar
             df = df.sort_values(by='fecha', ascending=True)
             
+            logger.info("[LOAD CBT] Iniciando TRUNCATE e INSERT en la tabla '%s'.", full_table)
             with self.engine.begin() as conn:
                 # Truncate
                 if self.version == "2":
@@ -119,10 +121,10 @@ class connection_db:
                 )
             
             ultima_fecha = df['fecha'].iloc[-1]
-            logger.info(f"[LOAD] '{self.tabla}' actualizada: {len(df)} filas. Último dato: {ultima_fecha}")
+            logger.info(f"[LOAD CBT] Carga completada: {len(df)} filas insertadas en '{self.tabla}'. Última fecha: {ultima_fecha}")
             return True
         
-        logger.info(f"[LOAD] No hay datos nuevos. BDD: {len_bdd} filas / DF: {len(df)} filas.")
+        logger.info(f"[LOAD CBT] No se detectaron datos nuevos para cargar. BDD: {len_bdd} filas | DF: {len(df)} filas.")
         return False
     
     def close(self):
@@ -130,4 +132,4 @@ class connection_db:
         if self.engine:
             self.engine.dispose()
             self.engine = None
-            logger.info("Conexiones de base de datos cerradas.")
+            logger.info("[LOAD CBT] Conexiones a la base de datos cerradas.")

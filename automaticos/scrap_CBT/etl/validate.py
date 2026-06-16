@@ -6,6 +6,9 @@ Responsabilidad: Validar consistencia de datos en minúsculas.
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DataValidator:
     """
@@ -24,7 +27,7 @@ class DataValidator:
         """
         Valida el DataFrame completo.
         """
-        print("[VALIDATE] Iniciando validación de datos...")
+        logger.info("[VALIDATE CBT] Iniciando validación de datos de Canasta Básica.")
         
         self.errores = []
         self.advertencias = []
@@ -43,10 +46,19 @@ class DataValidator:
         es_valido = len(self.errores) == 0
         
         if es_valido:
-            print(f"[VALIDATE] OK: Validacion exitosa. {len(self.advertencias)} advertencias.")
+            logger.info(f"[VALIDATE CBT] Validación exitosa. Se encontraron {len(self.advertencias)} advertencias.")
         else:
-            print(f"[VALIDATE] ERROR: Validacion fallida. {len(self.errores)} errores, {len(self.advertencias)} advertencias.")
+            logger.error(f"[VALIDATE CBT] Validación fallida. Se encontraron {len(self.errores)} errores y {len(self.advertencias)} advertencias.")
         
+        # Loguear detalles de errores y advertencias
+        if self.errores:
+            for error in self.errores:
+                logger.error(f"[VALIDATE CBT]   - Error: {error}")
+        
+        if self.advertencias:
+            for adv in self.advertencias:
+                logger.warning(f"[VALIDATE CBT]   - Advertencia: {adv}")
+
         return es_valido, self.errores, self.advertencias
     
     def _validar_columnas_requeridas(self, df):

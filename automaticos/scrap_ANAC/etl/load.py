@@ -24,6 +24,7 @@ class LoadANAC:
         self.version = str(version)
         self.conn = None
         self.engine = None
+        self.cursor = None
 
     def conectar_bdd(self):
         if not self.conn:
@@ -35,7 +36,7 @@ class LoadANAC:
                         database=self.database, port=puerto_mysql
                     )
                     conn_str = f"mysql+pymysql://{self.user}:{self.password}@{self.host}:{puerto_mysql}/{self.database}"
-                    logger.info(f"[OK] Conectado a MySQL (v1) en {self.host}")
+                    logger.info(f"[LOAD ANAC] Conexión establecida a MySQL (v1) en {self.host}")
                 else:
                     puerto_pg = self.port if self.port else 5432
                     self.conn = psycopg2.connect(
@@ -43,12 +44,12 @@ class LoadANAC:
                         database=self.database, port=puerto_pg
                     )
                     conn_str = f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{puerto_pg}/{self.database}"
-                    logger.info(f"[OK] Conectado a PostgreSQL (v2) en {self.host}")
+                    logger.info(f"[LOAD ANAC] Conexión establecida a PostgreSQL (v2) en {self.host}")
 
                 self.engine = create_engine(conn_str)
                 self.cursor = self.conn.cursor()
             except Exception as err:
-                logger.error(f"[ERROR] No se pudo conectar a la base v{self.version}: {err}")
+                logger.error(f"[LOAD ANAC] Error al conectar a la BD v{self.version}: {err}")
                 raise
         return self
     

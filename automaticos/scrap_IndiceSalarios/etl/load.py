@@ -41,25 +41,40 @@ class LoadIndiceSalarios:
         
         # 1. Asegurar formato de fecha
         df['fecha'] = pd.to_datetime(df['fecha']).dt.date
+
+        if df.empty:
+            logger.info("[LOAD] No hay datos en el DataFrame para procesar.")
+            return False
+
+        fecha_max_extract = df['fecha'].max()
+        fechas_nuevas = df['fecha'].unique().tolist()
+
+        # Obtener fecha máxima de la BDD para logging
+        try:
+            with self.engine.connect() as conn:
+                res_date = conn.execute(text(f"SELECT MAX(fecha) FROM {full_table}"))
+                fecha_max_db = res_date.scalar()
+        except Exception:
+            fecha_max_db = None
+
+        fecha_db_str = fecha_max_db.strftime('%Y-%m-%d') if hasattr(fecha_max_db, 'strftime') else 'Ninguna (Tabla vacía)'
+        fecha_ext_str = fecha_max_extract.strftime('%Y-%m-%d') if hasattr(fecha_max_extract, 'strftime') else 'Ninguna (DF vacío)'
+        
+        logger.info(f"[LOAD] Comparación de fechas -> Base: {fecha_db_str} | Extraído: {fecha_ext_str}")
+        logger.info(f"[LOAD] Refrescando/insertando datos para {len(fechas_nuevas)} meses. Se subirán {len(df)} registros.")
         
         # 2. Lógica incremental: Borrar fechas existentes para evitar duplicados
         with self.engine.begin() as conn:
-            # Obtener fechas del DF que ya están en la BD para no re-insertarlas
-            fechas = tuple(df['fecha'].unique().tolist())
-            if fechas:
-                conn.execute(text(f"DELETE FROM {full_table} WHERE fecha IN :fechas"), {"fechas": fechas})
+            if fechas_nuevas:
+                conn.execute(text(f"DELETE FROM {full_table} WHERE fecha IN :fechas"), {"fechas": tuple(fechas_nuevas)})
             
-            # 3. Insertar nuevos datos
+            # 3. Insertar nuevos datos (o re-insertar actualizados)
             df.to_sql(
-                name=self.tabla, 
-                con=conn, 
-                schema=schema, 
-                if_exists='append', 
-                index=False, 
-                method='multi'
+                name=self.tabla, con=conn, schema=schema, 
+                if_exists='append', index=False, method='multi'
             )
             
-        logger.info(f"[LOAD] {len(df)} registros procesados en '{self.tabla}'.")
+        logger.info(f"[LOAD] Carga a la base completada. Se subieron {len(df)} registros a la tabla '{self.tabla}'.")
         return True
 
     def _get_schema(self):

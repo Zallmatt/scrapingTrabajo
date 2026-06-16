@@ -69,21 +69,44 @@ class LoadIPI:
         # 2. Iterar sobre cada tabla
         for key, (db_name, tabla) in configuracion.items():
             df = dfs_dict[key]
+            if df.empty:
+                logger.warning(f"[LOAD] [{key.upper()}] DataFrame vacío, omitiendo carga para tabla '{tabla}'.")
+                continue
+
             engine = self._get_engine(db_name)
             
-            logger.info(f"[LOAD] Cargando {key} en base {db_name}...")
-            
+            logger.info(f"--- Iniciando carga para: {key.upper()} (Tabla: {tabla}, Base: {db_name}) ---")
+
+            # Asegurar formato fecha y obtener info del DF
+            df['fecha'] = pd.to_datetime(df['fecha']).dt.date
+            fecha_max_extract = df['fecha'].max()
+
+            full_table = f"{schema}.{tabla}" if schema else tabla
+
+            # Obtener info de la BDD para logging
+            try:
+                with engine.connect() as conn:
+                    fecha_max_db = conn.execute(text(f"SELECT MAX(fecha) FROM {full_table}")).scalar()
+            except Exception:
+                fecha_max_db = None
+
+            # Logging de comparación
+            fecha_db_str = fecha_max_db.strftime('%Y-%m-%d') if hasattr(fecha_max_db, 'strftime') else 'Ninguna (Tabla vacía)'
+            fecha_ext_str = fecha_max_extract.strftime('%Y-%m-%d') if hasattr(fecha_max_extract, 'strftime') else 'Ninguna (DF vacío)'
+            logger.info(f"[LOAD] [{key.upper()}] Comparación de fechas -> Base: {fecha_db_str} | Extraído: {fecha_ext_str}")
+
+            # La lógica de refresco es borrar e insertar, lo cual es correcto si hay correcciones en los datos.
+            logger.info(f"[LOAD] [{key.upper()}] Refrescando/insertando datos para {len(df['fecha'].unique())} meses. Se subirán {len(df)} registros.")
+
             with engine.begin() as conn:
-                full_table = f"{schema}.{tabla}" if schema else tabla
-                
                 # Borrado seguro por fechas para evitar duplicados
-                fechas = tuple(pd.to_datetime(df['fecha']).dt.date.tolist())
+                fechas = tuple(df['fecha'].unique().tolist())
                 conn.execute(text(f"DELETE FROM {full_table} WHERE fecha IN :fechas"), {"fechas": fechas})
                 
                 # Carga
                 df.to_sql(tabla, conn, schema=schema, if_exists='append', index=False, method='multi')
                 
-        logger.info("[OK] Las 3 tablas del IPI fueron cargadas exitosamente.")
+        logger.info("[OK] Carga de datos del IPI completada.")
 
     def close(self):
         """Cierra todos los motores de conexión abiertos."""
