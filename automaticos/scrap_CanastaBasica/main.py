@@ -146,6 +146,16 @@ def main():
             logger.error("[ERROR] No se encontraron links activos en la base de datos.")
             return
 
+        # MODO PRUEBA: Si se pasa --test, limitamos la cantidad de links a procesar
+        import sys
+        if "--test" in sys.argv:
+            logger.info("[TEST MODE] Limitando a un subset de links para prueba rápida.")
+            df_temp = pd.DataFrame(links_list)
+            # Tomar hasta 2 links de cada supermercado
+            df_temp = df_temp.groupby('nombre_super').head(2)
+            links_list = df_temp.to_dict('records')
+            logger.info(f"[TEST MODE] Links a procesar ({len(links_list)}): {links_list}")
+
         df_raw = extractor.extract(links_list)
         if df_raw.empty:
             logger.error("[ERROR] La extracción no generó datos. Abortando.")

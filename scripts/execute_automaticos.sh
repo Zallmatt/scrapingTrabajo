@@ -12,7 +12,9 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 # Activar entorno virtual
-if [ -d "env_scrapping" ]; then
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+elif [ -d "env_scrapping" ]; then
     source env_scrapping/bin/activate
 elif [ -d "env" ]; then
     source env/bin/activate

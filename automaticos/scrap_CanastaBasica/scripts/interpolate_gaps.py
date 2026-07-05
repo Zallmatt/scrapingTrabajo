@@ -27,9 +27,9 @@ def main():
     engine_v1 = create_engine(get_url('DBB1'))
     engine_v2 = create_engine(get_url('DBB2'))
     
-    date_start = '2026-05-08'
-    date_end = '2026-05-10'
-    missing_dates = ['2026-05-09']
+    date_start = '2026-07-02'
+    date_end = '2026-07-05'
+    missing_dates = ['2026-07-03', '2026-07-04']
     
     print(f"=== INTERPOLACIÓN LINEAL DE PRECIOS ({date_start} -> {date_end}) ===")
     
@@ -54,7 +54,7 @@ def main():
         print(f"Productos coincidentes: {len(merged)}")
 
         # 3. Interpolar e Insertar
-        total_days = 2
+        total_days = len(missing_dates) + 1
         for i, m_date in enumerate(missing_dates):
             day_num = i + 1 
             print(f"Procesando {m_date}...")
