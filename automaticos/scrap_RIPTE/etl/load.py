@@ -79,6 +79,11 @@ class LoadRIPTE:
                 text(f"INSERT INTO {full_table} (fecha, valor) VALUES (:f, :v)"),
                 {"f": nueva_fecha, "v": valor}
             )
+            try:
+                alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             logger.info("[LOAD] Carga a la base completada.")
             return True
 

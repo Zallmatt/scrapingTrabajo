@@ -105,6 +105,11 @@ class LoadIPI:
                 
                 # Carga
                 df.to_sql(tabla, conn, schema=schema, if_exists='append', index=False, method='multi')
+                try:
+                    alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] [{key.upper()}] No se pudo agregar la columna updated_at a {full_table}: {e}")
                 
         logger.info("[OK] Carga de datos del IPI completada.")
 

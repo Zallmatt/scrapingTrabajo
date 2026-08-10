@@ -1,5 +1,5 @@
 import psycopg2
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 import os
 
@@ -56,6 +56,12 @@ class ConexionBase:
         try:
             # if_exists='append' mantiene los datos y suma los nuevos
             df.to_sql(name=tabla, con=self.engine, schema=schema, if_exists='append', index=False)
+            try:
+                full_table = f"{schema}.{tabla}" if schema else tabla
+                with self.engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+            except Exception as e:
+                print(f"Error al agregar columna updated_at: {e}")
             print(f"ÉXITO: {len(df)} filas insertadas en {tabla}")
         except Exception as e:
             print(f"ERROR en carga: {e}")

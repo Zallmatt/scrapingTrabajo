@@ -1,5 +1,5 @@
 from pymysql import connect
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 
 class conexionBaseDatos:
@@ -45,6 +45,11 @@ class conexionBaseDatos:
        
     
         df.to_sql(name="rem_precios_minoristas", con=engine, if_exists='replace', index=False)
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE rem_precios_minoristas ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+        except Exception as e:
+            print(f"Error al agregar columna updated_at: {e}")
 
         
     def cargaBaseDatos2(self, df):
@@ -60,6 +65,11 @@ class conexionBaseDatos:
        
     
         df.to_sql(name="rem_cambio_nominal", con=engine, if_exists='replace', index=False)
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE rem_cambio_nominal ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+        except Exception as e:
+            print(f"Error al agregar columna updated_at: {e}")
 
         
         # Confirmar los cambios en la base de datos
@@ -94,6 +104,11 @@ class conexionBaseDatos:
             #Buscamos solo los datos nuevos.
             df_tail = df_rem_precios_minoristas.tail(tamano_df - tamano_bdd)
             df_tail.to_sql(name = "ipc_rem_variaciones",con = self.engine,if_exists='append',index = False) #--> Carga final
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE ipc_rem_variaciones ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+            except Exception as e:
+                print(f"Error al agregar columna updated_at: {e}")
 
             print("************************************************************************")
             print("** SE HA PRODUCIDO UNA ACTUALIZACION IPC REM DE PRECIOS MINORISTAS **")
@@ -131,6 +146,11 @@ class conexionBaseDatos:
             #Buscamos solo los datos nuevos.
             df_tail = df_rem_cambio_nominal.tail(tamano_df - tamano_bdd)
             df_tail.to_sql(name = "rem_cambio_nominal",con = self.engine,if_exists='append',index = False) #--> Carga final
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE rem_cambio_nominal ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+            except Exception as e:
+                print(f"Error al agregar columna updated_at: {e}")
 
             print("************************************************************************")
             print("** SE HA PRODUCIDO UNA ACTUALIZACION EN LOS CAMBIOS NOMINALES DEL REM **")

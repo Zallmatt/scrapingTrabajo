@@ -77,6 +77,11 @@ class LoadANAC:
                 # En MySQL el schema es None, en Postgres es 'public'
                 schema_name = "public" if self.version == "2" else None
                 df.to_sql(name='anac', con=conn, schema=schema_name, if_exists='append', index=False, method='multi')
+                try:
+                    alter_query = f"ALTER TABLE {tabla_completa} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {tabla_completa} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             
             logger.info(f"[LOAD] v{self.version} OK: {len(df)} filas cargadas.")
         except Exception as e:

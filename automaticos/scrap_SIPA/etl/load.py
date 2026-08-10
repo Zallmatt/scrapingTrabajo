@@ -78,6 +78,11 @@ class LoadSIPA:
                 conn.execute(text(f"TRUNCATE TABLE {full_table}"))
             
             df.to_sql(name=self.tabla, con=conn, schema=schema, if_exists='append', index=False, method='multi')
+            try:
+                alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
         
         logger.info("[LOAD] Carga a la base completada. %d filas cargadas. Iniciando Analytics...", len(df))
         self._run_analytics()
@@ -95,12 +100,26 @@ class LoadSIPA:
         self._get_variances_nation(df_ana)
         df_ana['fecha'] = pd.to_datetime(df_ana['fecha']).dt.date
         df_ana.to_sql(name="empleo_nacional_porcentajes_variaciones", con=engine_dwh, schema=schema_dwh, if_exists='replace', index=False)
+        try:
+            with engine_dwh.begin() as conn_alter:
+                full_table_ana = f"{schema_dwh}.empleo_nacional_porcentajes_variaciones" if schema_dwh else "empleo_nacional_porcentajes_variaciones"
+                alter_query = f"ALTER TABLE {full_table_ana} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_ana} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn_alter.execute(text(alter_query))
+        except Exception as e:
+            logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a empleo_nacional_porcentajes_variaciones: {e}")
         
         # Analytics NEA
         df_nea = pd.DataFrame()
         self._get_variances_nea(df_nea, engine_datalake)
         df_nea['fecha'] = pd.to_datetime(df_nea['fecha']).dt.date
         df_nea.to_sql(name="empleo_nea_variaciones", con=engine_dwh, schema=schema_dwh, if_exists='replace', index=False)
+        try:
+            with engine_dwh.begin() as conn_alter:
+                full_table_nea = f"{schema_dwh}.empleo_nea_variaciones" if schema_dwh else "empleo_nea_variaciones"
+                alter_query = f"ALTER TABLE {full_table_nea} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_nea} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn_alter.execute(text(alter_query))
+        except Exception as e:
+            logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a empleo_nea_variaciones: {e}")
         
         logger.info("[LOAD] Analytics actualizados en DWH.")
 
@@ -118,6 +137,13 @@ class LoadSIPA:
         
         # Guardamos en DWH con el esquema correspondiente
         df_ana.to_sql(name="empleo_nacional_porcentajes_variaciones", con=engine_dwh, schema=schema, if_exists='replace', index=False)
+        try:
+            with engine_dwh.begin() as conn_alter:
+                full_table_ana = f"{schema}.empleo_nacional_porcentajes_variaciones" if schema else "empleo_nacional_porcentajes_variaciones"
+                alter_query = f"ALTER TABLE {full_table_ana} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_ana} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn_alter.execute(text(alter_query))
+        except Exception as e:
+            logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a empleo_nacional_porcentajes_variaciones: {e}")
         logger.info("[LOAD] Analytics nacionales actualizados en DWH.")
 
     def _get_percentages(self, df, engine_datalake):
@@ -168,6 +194,13 @@ class LoadSIPA:
         
         # Guardamos en DWH con el esquema correspondiente
         df_nea.to_sql(name="empleo_nea_variaciones", con=engine_dwh, schema=schema, if_exists='replace', index=False)
+        try:
+            with engine_dwh.begin() as conn_alter:
+                full_table_nea = f"{schema}.empleo_nea_variaciones" if schema else "empleo_nea_variaciones"
+                alter_query = f"ALTER TABLE {full_table_nea} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_nea} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn_alter.execute(text(alter_query))
+        except Exception as e:
+            logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a empleo_nea_variaciones: {e}")
         logger.info("[LOAD] Analytics NEA actualizados en DWH.")
 
     def _get_variances_nea(self, df, engine_datalake):

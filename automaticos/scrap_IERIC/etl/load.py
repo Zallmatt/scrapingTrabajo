@@ -77,6 +77,11 @@ class LoadIERIC:
                     index=False,
                     method='multi'
                 )
+                try:
+                    alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] [{key_log}] No se pudo agregar la columna updated_at a {full_table}: {e}")
             logger.info(f"[OK] [{key_log}] Carga completada en tabla '{tabla_nombre}'.")
         except Exception as e:
             logger.error(f"[LOAD ERROR] [{key_log}] Error en la tabla {tabla_nombre}: {e}")

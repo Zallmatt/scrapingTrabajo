@@ -88,6 +88,12 @@ class LoadEMAE:
         if not df_nuevos.empty:
             logger.info(f"[LOAD] [VALORES] ¡Datos nuevos detectados! Se cargarán {len(df_nuevos)} registros (para {len(df_nuevos['fecha'].unique())} meses).")
             df_nuevos.to_sql(name=tabla, con=self.engine, schema=schema, if_exists='append', index=False, method='multi')
+            try:
+                with self.engine.begin() as conn:
+                    alter_query = f"ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_name} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] [VALORES] No se pudo agregar la columna updated_at: {e}")
             logger.info("[OK] [VALORES] Carga a la base completada.")
             return True
             
@@ -132,6 +138,12 @@ class LoadEMAE:
         if not df_nuevos.empty:
             logger.info(f"[LOAD] [VARIACIONES] ¡Datos nuevos detectados! Se cargarán {len(df_nuevos)} registros.")
             df_nuevos.to_sql(name=tabla, con=self.engine, schema=schema, if_exists='append', index=False, method='multi')
+            try:
+                with self.engine.begin() as conn:
+                    alter_query = f"ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_name} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] [VARIACIONES] No se pudo agregar la columna updated_at: {e}")
             logger.info("[OK] [VARIACIONES] Carga a la base completada.")
             return True
         

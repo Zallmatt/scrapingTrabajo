@@ -75,6 +75,11 @@ class LoadSemaforo:
                 conn.execute(text(f"TRUNCATE TABLE {full_table}"))
             
             df.to_sql(name=tabla, con=conn, schema=schema, if_exists='append', index=False)
+            try:
+                alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             logger.info(f"[LOAD] Carga a la base completada para '{tabla}'.")
             
         return True

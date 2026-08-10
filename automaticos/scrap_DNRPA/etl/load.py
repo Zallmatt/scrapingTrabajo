@@ -82,6 +82,11 @@ class LoadDNRPA:
                 logger.info(f"[LOAD] ¡Datos nuevos detectados! Refrescando/insertando datos para el año {ultimo_anio}. Se subirán {len(df_anio)} registros.")
                 conn.execute(query_delete, {"anio": ultimo_anio})
                 df_anio.to_sql(table_name, con=conn, schema=schema, if_exists='append', index=False)
+                try:
+                    alter_query = f"ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table_name} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             
             logger.info("[OK] Carga a la base completada.")
 

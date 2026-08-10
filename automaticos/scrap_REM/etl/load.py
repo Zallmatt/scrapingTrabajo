@@ -89,6 +89,12 @@ class LoadREM:
                     index=False, 
                     method='multi'
                 )
+                try:
+                    full_table = f"{schema}.{self.tabla_cambio}" if schema else self.tabla_cambio
+                    alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             logger.info("[LOAD] Carga a la base completada.")
 
         except Exception as e:
@@ -96,6 +102,13 @@ class LoadREM:
             logger.warning("[LOAD] Error al comparar (posible tabla nueva): %s", e)
             logger.info(f"[LOAD] ¡Creando tabla y haciendo carga inicial! Se subirán {len(df_new)} registros.")
             df_new.to_sql(name=self.tabla_cambio, con=self.engine, schema=schema, if_exists='append', index=False)
+            try:
+                full_table = f"{schema}.{self.tabla_cambio}" if schema else self.tabla_cambio
+                with self.engine.begin() as conn:
+                    alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             logger.info("[LOAD] Carga a la base completada.")
 
     def close(self):

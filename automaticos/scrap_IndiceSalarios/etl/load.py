@@ -73,6 +73,11 @@ class LoadIndiceSalarios:
                 name=self.tabla, con=conn, schema=schema, 
                 if_exists='append', index=False, method='multi'
             )
+            try:
+                alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             
         logger.info(f"[LOAD] Carga a la base completada. Se subieron {len(df)} registros a la tabla '{self.tabla}'.")
         return True

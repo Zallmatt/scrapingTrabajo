@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import pymysql
 import psycopg2
 
@@ -52,6 +52,14 @@ class LoadSRT:
         if not df_nuevo.empty:
             logger.info(f"[LOAD] Cargando {len(df_nuevo)} registros nuevos.")
             df_nuevo.to_sql(name=TABLA, con=engine, if_exists='append', index=False, method='multi')
+            try:
+                schema_prefix = "public." if self.version == "2" else ""
+                full_table = f"{schema_prefix}{TABLA}"
+                with engine.begin() as conn:
+                    alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
         else:
             logger.info("[LOAD] No hay registros nuevos para cargar.")
 

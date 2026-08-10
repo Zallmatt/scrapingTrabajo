@@ -61,6 +61,14 @@ class LoadCanastaBasica:
                     id_generado = cursor.lastrowid # Clásico de MySQL
                 
                 db_instancia.connection.commit()
+                try:
+                    is_pg = (db_instancia.engine.name == 'postgresql')
+                    alter_query = "ALTER TABLE extracciones ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if is_pg else "ALTER TABLE extracciones ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    with db_instancia.connection.cursor() as cursor_alter:
+                        cursor_alter.execute(alter_query)
+                    db_instancia.connection.commit()
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a extracciones: {e}")
                 return id_generado
         except Exception as e:
             logger.error(f"[LOAD] Error registrando extracción en {nombre_log}: {e}")
@@ -93,6 +101,14 @@ class LoadCanastaBasica:
             try:
                 # Inserción masiva
                 success = db_instancia.insert_append('precios_productos', df_local)
+                try:
+                    is_pg = (db_instancia.engine.name == 'postgresql')
+                    alter_query = "ALTER TABLE precios_productos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if is_pg else "ALTER TABLE precios_productos ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    with db_instancia.connection.cursor() as cursor_alter:
+                        cursor_alter.execute(alter_query)
+                    db_instancia.connection.commit()
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a precios_productos: {e}")
                 estado = 'completada' if success else 'error'
                 
                 # Actualizar estado
@@ -143,6 +159,14 @@ class LoadCanastaBasica:
                 
                 cursor.execute(query_insert)
                 db_instancia.connection.commit()
+                try:
+                    is_pg = (db_instancia.engine.name == 'postgresql')
+                    alter_query = "ALTER TABLE extracciones ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if is_pg else "ALTER TABLE extracciones ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    with db_instancia.connection.cursor() as cursor_alter:
+                        cursor_alter.execute(alter_query)
+                    db_instancia.connection.commit()
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a extracciones: {e}")
                 return True
         except Exception as e:
             logger.error(f"[LOAD] Error registrando ID específico en {nombre_log}: {e}")
@@ -222,6 +246,13 @@ class LoadCanastaBasica:
             if not df_ext_nuevas.empty:
                 logger.info(f"Sincronizando {len(df_ext_nuevas)} registros en tabla 'extracciones'...")
                 df_ext_nuevas.to_sql('extracciones', self.db_v2.engine, if_exists='append', index=False)
+                try:
+                    with self.db_v2.engine.begin() as conn:
+                        is_pg = (self.db_v2.engine.name == 'postgresql')
+                        alter_query = "ALTER TABLE extracciones ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if is_pg else "ALTER TABLE extracciones ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                        conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a extracciones: {e}")
 
             # --- 2. SINCRONIZAR TABLA 'precios_productos' ---
             with self.db_v2.engine.connect() as conn:
@@ -235,6 +266,13 @@ class LoadCanastaBasica:
 
             logger.info(f"Sincronizando {len(df_precios_nuevos)} registros en tabla 'precios_productos'...")
             df_precios_nuevos.to_sql('precios_productos', self.db_v2.engine, if_exists='append', index=False)
+            try:
+                with self.db_v2.engine.begin() as conn:
+                    is_pg = (self.db_v2.engine.name == 'postgresql')
+                    alter_query = "ALTER TABLE precios_productos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if is_pg else "ALTER TABLE precios_productos ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+            except Exception as e:
+                logger.warning(f"[LOAD] No se pudo agregar la columna updated_at a precios_productos: {e}")
             
             logger.info("Sincronización completada exitosamente.")
             return len(df_precios_nuevos)

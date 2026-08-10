@@ -92,6 +92,11 @@ class LoadIPC:
                 # Inserción (usamos 'ipc' como nombre base, SQLAlchemy maneja el schema)
                 df_load.to_sql(name='ipc', con=conn, schema="public" if self.version == "2" else None,
                              if_exists='append', index=False, method='multi')
+                try:
+                    alter_query = f"ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {tabla} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD] No se pudo agregar la columna updated_at: {e}")
             
             logger.info(f"[LOAD] Carga a la base completada. Se subieron {len(df_load)} registros a la tabla 'ipc'.")
             return True

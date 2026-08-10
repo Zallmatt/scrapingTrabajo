@@ -119,6 +119,11 @@ class connection_db:
                     index=False, 
                     method='multi'
                 )
+                try:
+                    alter_query = f"ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;" if self.version == "2" else f"ALTER TABLE {full_table} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+                    conn.execute(text(alter_query))
+                except Exception as e:
+                    logger.warning(f"[LOAD CBT] No se pudo agregar la columna updated_at: {e}")
             
             ultima_fecha = df['fecha'].iloc[-1]
             logger.info(f"[LOAD CBT] Carga completada: {len(df)} filas insertadas en '{self.tabla}'. Última fecha: {ultima_fecha}")
