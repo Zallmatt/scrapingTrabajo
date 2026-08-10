@@ -69,11 +69,21 @@ class LoadVentasCombustible:
                     fecha DATE,
                     id_provincia INT,
                     producto VARCHAR(100),
-                    cantidad DECIMAL(15, 2)
+                    cantidad DECIMAL(15, 2),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """
             with self.engine.begin() as conn:
                 conn.execute(text(create_sql))
+                # Intentamos agregar la columna por si la tabla ya existía sin ella
+                try:
+                    if self.version == "2":  # PostgreSQL
+                        conn.execute(text(f"ALTER TABLE {full_table_name} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+                    else:  # MySQL
+                        conn.execute(text(f"ALTER TABLE {full_table_name} ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+                except Exception as e:
+                    logger.debug(f"Columna updated_at ya existe o no se pudo agregar: {e}")
+
 
             # 2. Filtrado simple en memoria (Python hace el trabajo de evitar duplicados)
             query = f"SELECT fecha, id_provincia, producto FROM {full_table_name}"

@@ -1,49 +1,32 @@
 """
 EXTRACT - Módulo de extracción de datos VentasCombustible
-Responsabilidad: Descargar el CSV de ventas de combustible desde datos.gob.ar usando Selenium
+Responsabilidad: Descargar el CSV de ventas de combustible desde datos.gob.ar usando BeautifulSoup
 """
 import os
 import logging
 import requests
 import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
+import urllib3
 
 logger = logging.getLogger(__name__)
 
+# Desactivar advertencias de SSL no verificado (el sitio de energía a veces tiene problemas de certificados)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 FILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'files')
-URL = 'https://datos.gob.ar/dataset/energia-refinacion-comercializacion-petroleo-gas-derivados-tablas-dinamicas/archivo/energia_f0e4e10a-e4b8-44e6-bd16-763a43742107'
-XPATH_LINK = "/html/body/div[1]/div[2]/div/div/div[3]/a[1]"
+URL = 'http://datos.energia.gob.ar/dataset/refinacion-y-comercializacion-de-petroleo-gas-y-derivados-tablas-dinamicas/archivo/f0e4e10a-e4b8-44e6-bd16-763a43742107'
 NOMBRE_ARCHIVO = 'ventas_combustible.csv'
 
 
 class ExtractVentasCombustible:
     """Descarga el CSV de ventas de combustible."""
 
-    def _crear_driver(self):
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        
-        driver = webdriver.Chrome(options=options)
-        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-            "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        })
-        return driver
-
     def extract(self) -> str:
         os.makedirs(FILES_DIR, exist_ok=True)
         ruta = os.path.join(FILES_DIR, NOMBRE_ARCHIVO)
 
-        # --- NUEVO: Verificación de frescura del archivo ---
+        # --- Verificación de frescura del archivo ---
         if os.path.exists(ruta):
             tiempo_archivo = os.path.getmtime(ruta)
             # 3600 segundos = 1 hora
@@ -52,19 +35,32 @@ class ExtractVentasCombustible:
                 return ruta
         # ----------------------------------------------------
         
-        # 1. Obtener URL con Selenium
-        driver = self._crear_driver()
+        # 1. Obtener URL de descarga usando BeautifulSoup
+        logger.info("[EXTRACT] Navegando a %s", URL)
         try:
-            logger.info("[EXTRACT] Navegando a %s", URL)
-            driver.get(URL)
-            wait = WebDriverWait(driver, 10)
-            elem = wait.until(EC.presence_of_element_located((By.XPATH, XPATH_LINK)))
-            url_archivo = elem.get_attribute('href')
-            logger.info("[EXTRACT] URL del CSV: %s", url_archivo)
-        finally:
-            driver.quit()
+            r_page = requests.get(URL, timeout=30, verify=False)
+            r_page.raise_for_status()
+            soup = BeautifulSoup(r_page.content, 'html.parser')
+            
+            # Buscar el enlace de descarga
+            elem = soup.find('a', class_='btn-green')
+            if not elem:
+                # Intento alternativo buscando por href
+                for a in soup.find_all('a', href=True):
+                    if 'download/ventas-excluye-ventas-a-empresas-del-sector' in a['href']:
+                        elem = a
+                        break
+            
+            if not elem:
+                raise ValueError("No se pudo encontrar el enlace de descarga en la página.")
+                
+            url_archivo = elem['href']
+            logger.info("[EXTRACT] URL del CSV encontrada: %s", url_archivo)
+        except Exception as e:
+            logger.error("[EXTRACT] Error al extraer la URL del CSV: %s", e)
+            raise
 
-        # 2. Descarga por Streaming con Reintentos (Solución al IncompleteRead)
+        # 2. Descarga por Streaming con Reintentos
         max_reintentos = 3
         for i in range(max_reintentos):
             try:
@@ -82,3 +78,4 @@ class ExtractVentasCombustible:
                 time.sleep(5)
                 if i == max_reintentos - 1:
                     raise
+
