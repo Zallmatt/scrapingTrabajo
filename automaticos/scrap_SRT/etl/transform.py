@@ -29,12 +29,6 @@ class TransformSRT:
     """Transforma los CSVs del SRT en un DataFrame consolidado."""
 
     def transform(self, files_dir: str = None) -> pd.DataFrame:
-        """
-        Procesa todos los CSVs en files/ y retorna el DataFrame final.
-
-        Returns:
-            pd.DataFrame consolidado de todos los períodos
-        """
         if files_dir is None:
             files_dir = FILES_DIR
 
@@ -60,7 +54,6 @@ class TransformSRT:
         return df_final
 
     def _normalizar_csv(self, ruta: str):
-        """Normaliza el separador del CSV a coma."""
         sep = self._detectar_separador(ruta)
         try:
             df = pd.read_csv(ruta, sep=sep, engine='python', dtype=str)
@@ -78,45 +71,46 @@ class TransformSRT:
             df[['periodo', 'jurisdiccion_desc', 'seccion', 'ciiu']] = \
                 df[['periodo', 'jurisdiccion_desc', 'seccion', 'ciiu']].astype(str)
 
-            primer_periodo = int(df['periodo'].iloc[0])
-            df['remuneracion'] = df['remuneracion'].astype(str)
-            if primer_periodo <= 202501:
-                df['remuneracion'] = (df['remuneracion']
-                                      .str.replace('.', '', regex=False)
-                                      .str.replace(',', '.', regex=False))
-            df['remuneracion'] = df['remuneracion'].replace('', None)
-            df['remuneracion'] = pd.to_numeric(df['remuneracion'], errors='coerce')
-            df['cant_personas_trabaj_up'] = pd.to_numeric(df['cant_personas_trabaj_up'], errors='coerce')
-            df['cant_personas_trabaj_cp'] = pd.to_numeric(df['cant_personas_trabaj_cp'], errors='coerce')
+            # Normalización robusta de números (para cualquier período)
+            df['remuneracion'] = df['remuneracion'].astype(str).str.strip()
+            df['remuneracion'] = (df['remuneracion']
+                                  .str.replace('.', '', regex=False)
+                                  .str.replace(',', '.', regex=False))
+            df['remuneracion'] = pd.to_numeric(df['remuneracion'], errors='coerce').fillna(0)
+            
+            df['cant_personas_trabaj_up'] = pd.to_numeric(df['cant_personas_trabaj_up'], errors='coerce').fillna(0)
+            df['cant_personas_trabaj_cp'] = pd.to_numeric(df['cant_personas_trabaj_cp'], errors='coerce').fillna(0)
 
-            # Fecha - Extraer de cada fila, no solo de la fila 5
-            df['periodo'] = df['periodo'].astype(str)
+            # Fecha
             df['año'] = df['periodo'].str[:4].astype(int)
             df['mes'] = df['periodo'].str[4:6].astype(int)
             df['fecha'] = pd.to_datetime(df[['año', 'mes']].rename(columns={'año': 'year', 'mes': 'month'}).assign(day=1))
-            df = df.drop(columns=['año', 'mes'])
+            df = df.drop(columns=['año', 'mes', 'periodo'])
 
             # Agrupar
             df_agr = df.groupby(
                 ['fecha', 'jurisdiccion_desc', 'seccion', 'grupo', 'ciiu'], as_index=False
-            ).agg({'cant_personas_trabaj_cp': 'sum',
-                   'cant_personas_trabaj_up': 'sum',
-                   'remuneracion': 'sum'})
+            ).agg({
+                'cant_personas_trabaj_cp': 'sum',
+                'cant_personas_trabaj_up': 'sum',
+                'remuneracion': 'sum'
+            })
 
             df_agr['cant_personas_trabaj_up'] += df_agr['cant_personas_trabaj_cp']
             df_agr.drop(columns=['cant_personas_trabaj_cp'], inplace=True)
-            df_agr['salario'] = (df_agr['remuneracion'] / df_agr['cant_personas_trabaj_up']).fillna(0)
+            
+            # Cálculo de salario
+            df_agr['salario'] = (df_agr['remuneracion'] / df_agr['cant_personas_trabaj_up'].replace(0, float('nan'))).fillna(0)
 
             # Provincias
             df_agr['jurisdiccion_desc'] = df_agr['jurisdiccion_desc'].replace(DICT_PROVINCIAS)
             df_agr = df_agr.rename(columns={
-                'periodo': 'fecha',            # Aunque tu código ya reasigna periodo, esto asegura el nombre
                 'jurisdiccion_desc': 'id_provincia',
                 'seccion': 'id_seccion',
                 'ciiu': 'id_ciiu',
                 'grupo': 'id_grupo'
             })
-            df_agr['id_provincia'] = pd.to_numeric(df_agr['id_provincia'], errors='coerce')
+            df_agr['id_provincia'] = pd.to_numeric(df_agr['id_provincia'], errors='coerce').fillna(0).astype(int)
 
             float_cols = df_agr.select_dtypes(include='float').columns
             df_agr[float_cols] = df_agr[float_cols].round(2)
