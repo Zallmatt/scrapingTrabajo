@@ -197,10 +197,30 @@ class TransformIPC:
             
         return df_acum[['fecha', 'id_region', 'id_categoria', 'id_division', 'id_subdivision', nombre_col_valor]]
 
+    def _normalizar_fecha_mes(self, serie, log=False):
+        """
+        Normaliza fechas al primer día del mes.
+        INDEC a veces publica columnas con día distinto de 1 (p.ej. 2026-04-26
+        en variación mensual vs 2026-04-01 en índices), lo que rompe el merge.
+        """
+        fechas = pd.to_datetime(serie, errors='coerce')
+        if log:
+            raros = fechas[fechas.dt.day != 1].dropna()
+            if len(raros):
+                unicas = sorted({d.date().isoformat() for d in raros})
+                logger.warning(
+                    "[TRANSFORM] Fechas con día ≠ 1 detectadas (%d): %s. "
+                    "Se normalizan al día 1 del mes (cubre desfase tipo abril 2026).",
+                    len(raros),
+                    unicas,
+                )
+        return fechas.dt.to_period('M').dt.to_timestamp()
+
     def _concatenacion_final(self, df_val, df_var, df_inter):
-        df_val['fecha'] = pd.to_datetime(df_val['fecha'])
-        df_var['fecha'] = pd.to_datetime(df_var['fecha'])
-        df_inter['fecha'] = pd.to_datetime(df_inter['fecha'])
+        # Logueamos sobre variaciones mensuales: ahí suele aparecer el desfase de INDEC
+        df_val['fecha'] = self._normalizar_fecha_mes(df_val['fecha'])
+        df_var['fecha'] = self._normalizar_fecha_mes(df_var['fecha'], log=True)
+        df_inter['fecha'] = self._normalizar_fecha_mes(df_inter['fecha'])
         
         df_final = pd.merge(df_val, df_var[['fecha', 'id_region', 'id_subdivision', 'var_mensual']], 
                           on=['fecha', 'id_region', 'id_subdivision'], how='left')

@@ -7,6 +7,7 @@ Si en el futuro se necesita Selenium, usar modo headless para Linux.
 """
 import requests
 import os
+import re
 import urllib3
 import zipfile
 import shutil
@@ -110,7 +111,12 @@ class ExtractANAC:
         max_intentos = 3
         for intento in range(max_intentos):
             try:
-                response = requests.get(self.url_descarga, verify=False, timeout=60)
+                response = requests.get(
+                    self.url_descarga,
+                    verify=False,
+                    timeout=60,
+                    headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'},
+                )
                 if response.status_code == 200:
                     with open(ruta_zip, 'wb') as file:
                         file.write(response.content)
@@ -208,24 +214,33 @@ class ExtractANAC:
             raise
 
     def _extraer_excel(self, ruta_zip, ruta_excel_final, archivo_historico=False):
-        """Extrae el archivo Excel más reciente (2023-2026) del ZIP"""
+        """Extrae el Excel de series históricas del ZIP (sin hardcodear el año de cierre)."""
         try:
             with zipfile.ZipFile(ruta_zip, 'r') as zf:
                 contenidos = zf.namelist()
                 logger.debug(f"Archivos en el ZIP: {contenidos}")
 
-                # Definimos qué buscar
-                busqueda = '2001-2022' if archivo_historico else '2023-2026'
-                
-                # Buscamos específicamente el archivo que contiene '2023-2026'
-                archivo_objetivo = None
-                for nombre in contenidos:
-                    if busqueda in nombre and nombre.lower().endswith(('.xlsx', '.xls')):
-                        archivo_objetivo = nombre
-                        break
+                exceles = [
+                    n for n in contenidos
+                    if n.lower().endswith(('.xlsx', '.xls')) and 'series-historicas' in n.lower()
+                ]
+                if archivo_historico:
+                    candidatos = [n for n in exceles if '2001-2022' in n]
+                    archivo_objetivo = candidatos[0] if candidatos else None
+                else:
+                    vigentes = [n for n in exceles if '2001-2022' not in n]
+                    if not vigentes:
+                        vigentes = exceles
+                    # Preferir el rango con año de cierre más alto (2023-2026, 2023-2027, ...)
+                    def anio_cierre(nombre):
+                        nums = re.findall(r'(\d{4})', os.path.basename(nombre))
+                        return int(nums[-1]) if nums else 0
+                    archivo_objetivo = max(vigentes, key=anio_cierre) if vigentes else None
                 
                 if not archivo_objetivo:
-                    raise Exception(f"No se encontró el archivo {busqueda} en el ZIP")
+                    raise Exception(
+                        f"No se encontró Excel de series históricas en el ZIP. Contenido: {contenidos}"
+                    )
                 
                 logger.info(f"Archivo Excel detectado para extraer: {archivo_objetivo}")
                 

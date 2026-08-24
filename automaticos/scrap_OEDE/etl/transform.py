@@ -5,6 +5,7 @@ Responsabilidad: Construir el DataFrame consolidado de todas las provincias
 import os
 import logging
 import pandas as pd
+from datetime import datetime
 from unidecode import unidecode
 from sqlalchemy import create_engine
 
@@ -14,31 +15,38 @@ FILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'file
 NOMBRE_ARCHIVO = 'ev_remun_trab_reg_por_sector.xlsx'
 
 PROVINCIAS = {
-    'Partidos de GBA': 1, 
-    'Capital Federal': 2, 
-    'Resto de Buenos Aires': 6, 
+    'Partidos de GBA': 1,
+    'Capital Federal': 2,
+    'Resto de Buenos Aires': 6,
     'Catamarca': 10,
-    'Cordoba': 14, 
-    'Corrientes': 18, 
-    'Chaco': 22, 
+    'Cordoba': 14,
+    'Corrientes': 18,
+    'Chaco': 22,
     'Chubut': 26,
-    'Entre Rios': 30, 
-    'Formosa': 34, 
-    'Jujuy': 38, 
+    'Entre Rios': 30,
+    'Formosa': 34,
+    'Jujuy': 38,
     'La Pampa': 42,
-    'La Rioja': 46, 
-    'Mendoza': 50, 
-    'Misiones': 54, 
+    'La Rioja': 46,
+    'Mendoza': 50,
+    'Misiones': 54,
     'Neuquen': 58,
-    'Rio Negro': 62, 
-    'Salta': 66, 
-    'San Juan': 70, 
+    'Rio Negro': 62,
+    'Salta': 66,
+    'San Juan': 70,
     'San Luis': 74,
-    'Santa Cruz': 78, 
-    'Santa Fe': 82, 
+    'Santa Cruz': 78,
+    'Santa Fe': 82,
     'Santiago del Estero': 86,
-    'Tierra del Fuego': 90, 
+    'Tierra del Fuego': 90,
     'Tucuman': 94
+}
+
+# El Excel actual renombró varias hojas (GBA, CABA, etc.)
+SHEET_ALIASES = {
+    'partidosdegba': ['gba'],
+    'capitalfederal': ['caba'],
+    'restodebuenosaires': ['restopciabsas', 'restoprovbsas', 'restodebsas'],
 }
 
 
@@ -82,10 +90,14 @@ class TransformOEDE:
         self._construir_dic()
 
         logger.info("[TRANSFORM] Procesando %d provincias...", len(PROVINCIAS))
+        xl = pd.ExcelFile(ruta_archivo)
+        hojas_norm = {self._formatear_key(s): s for s in xl.sheet_names}
+
         dfs = []
         for provincia, id_prov in PROVINCIAS.items():
-            logger.info("[TRANSFORM] Procesando: %s (id=%d)", provincia, id_prov)
-            df = self._construir_df(ruta_archivo, provincia, id_prov)
+            hoja = self._resolver_hoja(provincia, hojas_norm)
+            logger.info("[TRANSFORM] Procesando: %s (id=%d, hoja=%s)", provincia, id_prov, hoja)
+            df = self._construir_df(ruta_archivo, hoja, id_prov)
             dfs.append(df)
 
         df_final = pd.concat(dfs, ignore_index=True)
@@ -101,9 +113,9 @@ class TransformOEDE:
             diccionario.setdefault(clave, []).append(valor)
         self._diccionario = diccionario
 
-    def _construir_df(self, ruta_archivo: str, provincia: str, id_prov: int) -> pd.DataFrame:
+    def _construir_df(self, ruta_archivo: str, hoja: str, id_prov: int) -> pd.DataFrame:
         # 1. Leer el Excel
-        df = pd.read_excel(ruta_archivo, sheet_name=provincia, skiprows=3)
+        df = pd.read_excel(ruta_archivo, sheet_name=hoja, skiprows=3)
         
         # 2. Limpieza de columnas iniciales
         df = df.drop(df.columns[0], axis=1) # Elimina 'Unnamed: 0'
@@ -118,9 +130,10 @@ class TransformOEDE:
             axis=1
         )
 
-        # 4. Seleccionar columnas de tiempo
-        # CAMBIO: Ahora buscamos la palabra 'Trim' en el nombre de la columna
-        columnas_tiempo = [c for c in df.columns if 'Trim' in str(c)]
+        # 4. Seleccionar columnas de tiempo (trimestral "Trim" o fechas mensuales)
+        columnas_tiempo = [c for c in df.columns if self._es_columna_tiempo(c)]
+        if not columnas_tiempo:
+            raise ValueError(f"[TRANSFORM] No hay columnas de tiempo en la hoja '{hoja}'.")
         cols_finales = ['id_categoria', 'id_subcategoria'] + columnas_tiempo
         df_reducido = df[cols_finales]
 
@@ -132,24 +145,7 @@ class TransformOEDE:
             value_name='valor'
         )
 
-        # 6. Función para convertir "1º Trim 1996" a "1996-01-01"
-        def parse_trimestre_texto(x):
-            try:
-                txt = str(x).lower()
-                # Extraer el año (últimos 4 caracteres)
-                ano = txt[-4:]
-                # Mapear el inicio del trimestre
-                mes = '01' # Por defecto
-                if '1' in txt: mes = '01'
-                elif '2' in txt: mes = '04'
-                elif '3' in txt: mes = '07'
-                elif '4' in txt: mes = '10'
-                
-                return pd.to_datetime(f"{ano}-{mes}-01")
-            except:
-                return pd.NaT
-
-        df_t['fecha'] = df_t['trimestre_raw'].apply(parse_trimestre_texto)
+        df_t['fecha'] = df_t['trimestre_raw'].apply(self._parse_tiempo)
         
         # 7. Limpieza y formato final para Postgres
         df_t = df_t.dropna(subset=['fecha'])
@@ -168,6 +164,51 @@ class TransformOEDE:
         if len(valores) > 1:
             return valores[1] if index >= 40 else valores[0]
         return valores[0]
+
+    def _resolver_hoja(self, provincia: str, hojas_norm: dict) -> str:
+        clave = self._formatear_key(provincia)
+        if clave in hojas_norm:
+            return hojas_norm[clave]
+        for alias in SHEET_ALIASES.get(clave, []):
+            if alias in hojas_norm:
+                return hojas_norm[alias]
+        raise ValueError(
+            f"[TRANSFORM] No se encontró hoja para '{provincia}'. "
+            f"Hojas: {list(hojas_norm.values())}"
+        )
+
+    @staticmethod
+    def _es_columna_tiempo(col) -> bool:
+        if isinstance(col, (datetime, pd.Timestamp)):
+            return True
+        texto = str(col)
+        if 'Trim' in texto:
+            return True
+        parsed = pd.to_datetime(col, errors='coerce')
+        return pd.notna(parsed)
+
+    @staticmethod
+    def _parse_tiempo(x):
+        if isinstance(x, (datetime, pd.Timestamp)):
+            return pd.Timestamp(year=x.year, month=x.month, day=1)
+        try:
+            parsed = pd.to_datetime(x, errors='coerce')
+            if pd.notna(parsed):
+                return pd.Timestamp(year=parsed.year, month=parsed.month, day=1)
+            txt = str(x).lower()
+            ano = txt[-4:]
+            mes = '01'
+            if '4' in txt:
+                mes = '10'
+            elif '3' in txt:
+                mes = '07'
+            elif '2' in txt:
+                mes = '04'
+            elif '1' in txt:
+                mes = '01'
+            return pd.to_datetime(f"{ano}-{mes}-01")
+        except Exception:
+            return pd.NaT
 
     @staticmethod
     def _formatear_key(key: str) -> str:
