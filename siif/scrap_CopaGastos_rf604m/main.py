@@ -1,3 +1,4 @@
+"""Copa Gastos rf604m via SIIF. Solo corre en la red local autorizada (login.jspx)."""
 import os
 import sys
 from etl.extract import login_and_extract
@@ -5,7 +6,7 @@ from etl.transform import transform_all_files
 from etl.load import load_to_db
 
 def main():
-    print("--- Starting Copa Gastos ETL Process ---")
+    print("--- Starting Copa Gastos rf604m ETL Process ---")
     
     # Configuration
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))

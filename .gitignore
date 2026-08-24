@@ -27,13 +27,24 @@ logs/
 *_cookies.pkl
 *_session.pkl
 
-# Archivos de test temporales (mantener tests en carpetas)
-test_*.py
-*_test.py
+# Archivos de test temporales en la raíz (mantener tests en carpetas)
+/test_*.py
+/*_test.py
 
 # Carpetas de versiones antiguas
 version_anterior/
 old/
+
+# Perfiles locales de Chrome para scrapers SIIF
+siif/**/files/chrome_profile/
+
+# Debug / staging SIIF (conservar .xls locales, no versionar)
+siif/**/files/raw/*.png
+siif/**/files/raw/*_debug.*
+siif/**/files/raw/scraping_log.txt
+siif/**/files/raw/fuente_inputs.txt
+siif/**/files/raw/_staging/
+siif/files/raw/_staging/
 
 # Archivos de bloqueo de LibreOffice/OpenOffice
 .~lock.*
