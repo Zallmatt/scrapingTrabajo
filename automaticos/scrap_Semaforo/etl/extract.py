@@ -25,7 +25,8 @@ COLUMNAS_SEMAFORO = [
     'exportaciones_aduana_corrientes_dolares',
     'exportaciones_aduana_corrientes_toneladas',
     'empleo_privado_registrado_sipa',
-
+    'permisos_edificacion_unidades',
+    'permisos_edificacion_m2'
 ]
 
 
@@ -40,15 +41,12 @@ class ExtractSemaforo:
 
     def extract(self):
         """
-        Extrae ambas hojas (interanual e intermensual).
-
-        Returns:
-            tuple: (df_interanual, df_intermensual)
+        Extrae ambas hojas (interanual e intermensual) leyendo hasta la fila 14 (fila 13 incluida).
         """
         logger.info("[EXTRACT] Leyendo hoja interanual...")
-        df_interanual = self._leer_hoja('Semaforo!B2:12')
+        df_interanual = self._leer_hoja('Semaforo!B2:14')
         logger.info("[EXTRACT] Leyendo hoja intermensual...")
-        df_intermensual = self._leer_hoja('Semaforo Intermensual!B2:12')
+        df_intermensual = self._leer_hoja('Semaforo Intermensual!B2:14')
         return df_interanual, df_intermensual
 
     def _leer_hoja(self, rango: str) -> DataFrame:
@@ -67,20 +65,16 @@ class ExtractSemaforo:
 
         max_length = max(len(f) for f in filas_indicadores) if filas_indicadores else 0
         
-        # Rellenamos nulos en horizontal (columnas faltantes en una fila)
+        # Rellenamos nulos en horizontal
         filas_indicadores = self._rellenar_nulos(filas_indicadores, max_length)
-
         fechas_truncadas = fechas[:max_length]
 
         df = DataFrame()
         df['fecha'] = fechas_truncadas
         for i, col in enumerate(COLUMNAS_SEMAFORO[1:]):
-            # Verificamos si existe la fila correspondiente en lo que bajó de Google
             if i < len(filas_indicadores):
-                # Si la fila existe, la asignamos
                 df[col] = filas_indicadores[i]
             else:
-                # Si la fila no existe en el Sheets, rellenamos con None (Nulos)
                 df[col] = [None] * len(fechas_truncadas)
                 logger.warning(f"[EXTRACT] Indicador '{col}' no encontrado en el Sheets. Rellenando con nulos.")
 
@@ -89,5 +83,4 @@ class ExtractSemaforo:
 
     @staticmethod
     def _rellenar_nulos(filas: list, max_length: int) -> list:
-        """Rellena con None las filas más cortas que max_length."""
         return [fila + [None] * (max_length - len(fila)) for fila in filas]
