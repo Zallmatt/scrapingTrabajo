@@ -135,10 +135,14 @@ class LoadANAC:
             query = f"SELECT MAX(fecha) FROM {prefix}anac"
             self.cursor.execute(query)
             result = self.cursor.fetchone()
+            # Libera el AccessShareLock de la consulta antes de que
+            # SQLAlchemy abra otra conexión para modificar la tabla.
+            self.conn.commit()
             if result and result[0]:
                 return pd.to_datetime(result[0]).date()
             return None
         except Exception as e:
+            self.conn.rollback()
             logger.info(f"Tabla no encontrada o vacía: {e}")
             return None
 
