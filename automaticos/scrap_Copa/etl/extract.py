@@ -3,72 +3,42 @@ from bs4 import BeautifulSoup
 import os
 import urllib.parse
 
-def extract_ron_file(base_url, xpath_info):
+MESES = {
+    'ENE': 1, 'FEB': 2, 'MAR': 3, 'ABR': 4, 'MAY': 5, 'JUN': 6,
+    'JUL': 7, 'AGO': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DIC': 12,
+}
+
+
+def extract_ron_file(base_url, xpath_info=None, include_date=False):
     """
-    Extracts the latest RON file from the given URL.
+    Extrae el último archivo diario RON y, opcionalmente, su año y mes
+    desde el texto y encabezado de la página. El nombre del XLS no siempre
+    incluye la fecha (por ejemplo, septiembre 2026 es internet_diario4.xls).
     """
     print(f"Fetching page: {base_url}")
-    response = requests.get(base_url)
+    response = requests.get(base_url, timeout=(30, 120))
     response.raise_for_status()
     
     soup = BeautifulSoup(response.content, 'html.parser')
-    
-    # The user provided XPath: /html/body/main/div[2]/div/section/div/div/article/div[7]/div/div/p[1]
-    # We'll try to find the relevant container. 
-    # Based on browser logs, it contains tags for MAR, FEB, ENE.
-    
-    # Let's search for the first <a> tag inside a paragraph that looks like the right one.
-    # We can try to match the structure or just look for the links if they are unique enough.
-    # However, to be more robust and follow the "first link" instruction:
-    
-    # We'll try to find the p tag. Since we don't have XPath, 
-    # we'll look for a p tag that contains the month links or look for the section.
-    
-    # Alternative: Use lxml if possible for direct XPath support.
-    try:
-        from lxml import etree
-        tree = etree.HTML(response.content)
-        # XPath provided by user
-        xpath = "/html/body/main/div[2]/div/section/div/div/article/div[7]/div/div/p[1]"
-        paragraphs = tree.xpath(xpath)
-        if not paragraphs:
-            # Fallback: maybe the index changed? Let's try to be a bit more flexible
-            # searching for the year container
-            print("XPath not found precisely, trying flexible search...")
-            import datetime
-            current_year = str(datetime.datetime.now().year)
-            paragraphs = tree.xpath(f"//article//p[contains(., '{current_year}')]")
-            if not paragraphs:
-                paragraphs = tree.xpath("//article//p[contains(., 'ENE') or contains(., 'MAR') or contains(., 'DIC')]")
 
-        if paragraphs:
-            target_p = paragraphs[0]
-            links = target_p.xpath(".//a/@href")
-            print(f"Found hrefs: {links}")
-            if links:
-                # The user wants the FIRST one
-                latest_link = links[0]
-                # Clean up if it starts with blank:#
-                if latest_link.startswith('blank:#'):
-                    latest_link = latest_link.replace('blank:#', '', 1)
-                
-                full_url = urllib.parse.urljoin(base_url, latest_link)
-                return full_url
-    except ImportError:
-        print("lxml not found, falling back to BeautifulSoup traversal...")
-        # Finding the paragraph by content or structure
-        months_to_search = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
-        for p in soup.find_all('p'):
-            a_tags = p.find_all('a')
-            if a_tags and any(month in p.get_text().upper() for month in months_to_search):
-                latest_link = a_tags[0]['href']
-                print(f"Found href via BS4: {latest_link}")
-                if latest_link.startswith('blank:#'):
-                    latest_link = latest_link.replace('blank:#', '', 1)
-                full_url = urllib.parse.urljoin(base_url, latest_link)
-                return full_url
+    for link in soup.find_all('a', href=True):
+        etiqueta_mes = link.get_text(' ', strip=True).upper()[:3]
+        href = link['href']
+        if etiqueta_mes not in MESES or 'internet_diario' not in href.lower():
+            continue
 
-    return None
+        encabezado_anio = link.find_previous(['h4', 'h5'])
+        texto_anio = encabezado_anio.get_text(' ', strip=True) if encabezado_anio else ''
+        year = int(texto_anio) if texto_anio.isdigit() and len(texto_anio) == 4 else None
+        month = MESES[etiqueta_mes]
+
+        if href.startswith('blank:#'):
+            href = href.replace('blank:#', '', 1)
+        full_url = urllib.parse.urljoin(base_url, href)
+        print(f"Found latest RON: {etiqueta_mes} {year} -> {full_url}")
+        return (full_url, year, month) if include_date else full_url
+
+    return (None, None, None) if include_date else None
 
 def download_file(url, target_path):
     print(f"Downloading: {url}")

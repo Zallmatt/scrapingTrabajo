@@ -12,11 +12,15 @@ import urllib3
 import zipfile
 import shutil
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
 class ExtractANAC:
     """Clase para extraer datos de ANAC"""
+
+    MAX_EDAD_CACHE_SEGUNDOS = 45 * 24 * 60 * 60
+    MAX_EDAD_ZIP_PREDESCARGADO_SEGUNDOS = 2 * 60 * 60
     
     def __init__(self, use_selenium=False, headless=True):
         """
@@ -61,16 +65,31 @@ class ExtractANAC:
             
             # Verificar si el archivo Excel ya existe y es reciente (menos de 1 hora)
             if os.path.exists(ruta_excel):
-                import time
                 tiempo_archivo = os.path.getmtime(ruta_excel)
                 tiempo_actual = time.time()
                 if (tiempo_actual - tiempo_archivo) < 3600:  # 1 hora
                     logger.info(f"[OK] Usando archivo Excel existente (descargado hace menos de 1 hora)")
                     return ruta_excel
 
-            # Descargar el archivo ZIP con reintentos
-            logger.info(f"Descargando archivo comprimido desde: {self.url_descarga}")
-            self._descargar_zip(ruta_zip)
+            # GitHub Actions puede dejar un ZIP reciente cuando Donweb no tiene
+            # conectividad directa con docs.anac.gob.ar.
+            if self._zip_predescargado_reutilizable(ruta_zip):
+                logger.info("[OK] Usando ZIP de ANAC predescargado por GitHub Actions.")
+            else:
+                logger.info(f"Descargando archivo comprimido desde: {self.url_descarga}")
+                try:
+                    self._descargar_zip(ruta_zip)
+                except Exception:
+                    if self._cache_excel_reutilizable(ruta_excel):
+                        edad_dias = (time.time() - os.path.getmtime(ruta_excel)) / 86400
+                        logger.warning(
+                            "[FALLBACK] ANAC no respondió. Se reutiliza el último Excel "
+                            "válido disponible (antigüedad: %.1f días).",
+                            edad_dias,
+                        )
+                        self._limpiar_archivos_temporales(ruta_zip)
+                        return ruta_excel
+                    raise
 
             # Extraer archivo Excel
             logger.info("Descomprimiendo archivo...")
@@ -93,6 +112,36 @@ class ExtractANAC:
                     self.driver = None
                 except:
                     pass
+
+    def _cache_excel_reutilizable(self, ruta_excel):
+        """Acepta como reserva solamente un XLSX válido y con menos de 45 días."""
+        if not os.path.isfile(ruta_excel):
+            return False
+
+        edad = time.time() - os.path.getmtime(ruta_excel)
+        if edad > self.MAX_EDAD_CACHE_SEGUNDOS:
+            logger.error(
+                "[FALLBACK] El Excel disponible tiene %.1f días; supera el máximo de 45 días.",
+                edad / 86400,
+            )
+            return False
+
+        if not zipfile.is_zipfile(ruta_excel):
+            logger.error("[FALLBACK] El archivo disponible no es un XLSX válido: %s", ruta_excel)
+            return False
+
+        return True
+
+    def _zip_predescargado_reutilizable(self, ruta_zip):
+        """Detecta el ZIP fresco que el workflow copia al servidor antes del DAG."""
+        if not os.path.isfile(ruta_zip):
+            return False
+
+        edad = time.time() - os.path.getmtime(ruta_zip)
+        return (
+            edad <= self.MAX_EDAD_ZIP_PREDESCARGADO_SEGUNDOS
+            and zipfile.is_zipfile(ruta_zip)
+        )
 
     def _descargar_zip(self, ruta_zip):
         """

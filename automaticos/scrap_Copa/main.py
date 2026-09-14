@@ -50,12 +50,12 @@ def extract_date_from_url(url):
                     t = a.text.strip().upper()
                     m_map = {k.upper(): v for k, v in month_map.items()}
                     if t in m_map:
-                        return year, m_map[t]
+                        return year_val, m_map[t]
         except Exception as e:
             print("Warning: Could not fetch page to deduce month:", e)
             
         # Fallback to current month if we couldn't find the link
-        return year, datetime.datetime.now().month
+        return year_val, datetime.datetime.now().month
 
     return None, None
 
@@ -74,7 +74,7 @@ def main():
     try:
         # 1. Extract
         print("[1/3] Extraction phase...")
-        file_url = extract_ron_file(URL, None)
+        file_url, year, month = extract_ron_file(URL, include_date=True)
         
         if not file_url:
             print("Error: Could not find the download link on the page.")
@@ -83,12 +83,15 @@ def main():
         download_file(file_url, TARGET_PATH)
         print(f"Extraction successful: {TARGET_PATH}")
         
-        # Determine date context
-        year, month = extract_date_from_url(file_url)
+        # Respaldo para páginas antiguas cuyos enlaces no tengan metadatos visibles.
+        if year is None or month is None:
+            year, month = extract_date_from_url(file_url)
         
         # 2. Transform
         print(f"[2/3] Transformation phase (Year: {year}, Month: {month})...")
-        transform_main(input_path=TARGET_PATH, year=year, month=month)
+        transform_ok = transform_main(input_path=TARGET_PATH, year=year, month=month)
+        if not transform_ok:
+            raise RuntimeError("La transformación RON no generó datos para cargar.")
         
         # 3. Load
         print("[3/3] Load phase...")

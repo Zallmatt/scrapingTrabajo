@@ -48,11 +48,24 @@ class ExtractSRT:
                 
                 hyper_file = None
                 with zipfile.ZipFile(temp_zip_path, 'r') as z:
-                    for name in z.namelist():
-                        if name.startswith("Data/") and name.endswith(".tmp"):
-                            hyper_file = z.extract(name, path=temp_extract_dir)
-                            logger.info("[EXTRACT] Extracto Hyper extraído a: %s", hyper_file)
-                            break
+                    extractos_hyper = [
+                        name for name in z.namelist()
+                        if name.startswith("Data/")
+                        and name.lower().endswith((".hyper", ".tmp"))
+                    ]
+                    if extractos_hyper:
+                        # Tableau actualmente publica federated.hyper; se conserva
+                        # compatibilidad con los paquetes antiguos que usaban .tmp.
+                        nombre_hyper = next(
+                            (name for name in extractos_hyper if name.lower().endswith(".hyper")),
+                            extractos_hyper[0],
+                        )
+                        hyper_file = z.extract(nombre_hyper, path=temp_extract_dir)
+                        logger.info(
+                            "[EXTRACT] Extracto Hyper encontrado (%s) y extraído a: %s",
+                            nombre_hyper,
+                            hyper_file,
+                        )
                             
                 if hyper_file:
                     logger.info("[EXTRACT] Conectando a la base de datos Hyper...")
@@ -107,7 +120,9 @@ class ExtractSRT:
                                         
                             logger.info("[EXTRACT] Generado CSV de %d filas para períodos %s", row_count, latest_periods)
                 else:
-                    logger.error("[EXTRACT] No se encontró el archivo extracto Hyper (.tmp) en el workbook.")
+                    logger.error(
+                        "[EXTRACT] No se encontró un extracto Hyper (.hyper o .tmp) en el workbook."
+                    )
             else:
                 logger.error("[EXTRACT] Error de conexión HTTP al descargar workbook. Status: %d", res.status_code)
                 

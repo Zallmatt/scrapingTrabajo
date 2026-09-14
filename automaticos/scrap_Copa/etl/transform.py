@@ -174,7 +174,7 @@ def main(input_path=None, year=None, month=None):
     
     if not os.path.exists(target_file):
         print(f"Error: File not found at {target_file}")
-        return
+        return False
 
     print(f"Processing file: {target_file} (Year: {year}, Month: {month})")
     df = process_file(target_file, year=year, month=month)
@@ -184,7 +184,7 @@ def main(input_path=None, year=None, month=None):
                     
     if not all_dfs:
         print("No data processed.")
-        return
+        return False
 
     print(f"Consolidating results...")
     consolidated = pd.concat(all_dfs, ignore_index=True)
@@ -209,6 +209,7 @@ def main(input_path=None, year=None, month=None):
     consolidated.to_csv(OUTPUT_FILE, index=False)
     print(f"Saved to {OUTPUT_FILE}")
     print(f"Final Shape: {consolidated.shape}")
+    return True
 
 if __name__ == "__main__":
     # If run directly, use defaults
