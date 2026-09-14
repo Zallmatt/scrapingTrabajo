@@ -47,10 +47,36 @@ class ValidateIPC:
                     resumen,
                 )
 
-        nulos_valor = int(df['valor'].isna().sum())
-        if nulos_valor:
+        valores_nulos = df['valor'].isna()
+        fechas_mes = fechas.dt.to_period('M')
+        regiones_sin_relevamiento = df['id_region'].isin(range(2, 8))
+        faltantes_historicos_abril = (
+            (fechas_mes == pd.Period('2020-04', freq='M'))
+            & regiones_sin_relevamiento
+            & df['id_subdivision'].isin([18, 19, 43])
+        )
+        faltantes_historicos_mayo_julio = (
+            fechas_mes.isin(pd.period_range('2020-05', '2020-07', freq='M'))
+            & regiones_sin_relevamiento
+            & (df['id_subdivision'] == 43)
+        )
+        faltantes_historicos = valores_nulos & (
+            faltantes_historicos_abril | faltantes_historicos_mayo_julio
+        )
+
+        nulos_historicos = int(faltantes_historicos.sum())
+        if nulos_historicos:
+            logger.warning(
+                "[VALIDATE] Se aceptan %d valores NULL históricos informados como "
+                "/// por INDEC durante abril-julio de 2020.",
+                nulos_historicos,
+            )
+
+        nulos_inesperados = int((valores_nulos & ~faltantes_historicos).sum())
+        if nulos_inesperados:
             raise ValueError(
-                f"[VALIDATE] {nulos_valor} filas con valor (índice IPC) NULL. "
+                f"[VALIDATE] {nulos_inesperados} filas inesperadas con valor "
+                "(índice IPC) NULL. "
                 "No se puede continuar sin el dato principal."
             )
 
